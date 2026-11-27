@@ -563,6 +563,19 @@ mod tests {
         }
     }
 
+    /// An implementation that returns the wrong interface version.
+    /// `validate_implementation` must reject it, leaving the proxy unchanged.
+    #[contract]
+    pub struct IncompatibleImpl;
+
+    #[contractimpl]
+    impl IncompatibleImpl {
+        /// Returns version 0, which the proxy considers incompatible.
+        pub fn if_ver(_env: Env) -> u32 {
+            0
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     fn setup(env: &Env) -> (ProxyContractClient<'_>, Address, Address) {
@@ -583,6 +596,36 @@ mod tests {
         let (proxy, admin, impl_id) = setup(&env);
         assert_eq!(proxy.get_admin(), admin);
         assert_eq!(proxy.get_implementation(), impl_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "incompatible implementation interface")]
+    fn test_initialize_rejects_incompatible_implementation() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        // Deploy an implementation whose `if_ver` returns 0 (wrong version).
+        let bad_impl_id = env.register(IncompatibleImpl, ());
+        let proxy_id = env.register(ProxyContract, ());
+        let proxy = ProxyContractClient::new(&env, &proxy_id);
+        // initialize must reject the incompatible implementation and panic.
+        proxy.initialize(&admin, &bad_impl_id);
+        // The proxy must not be initialised; get_admin would panic if reached.
+        proxy.get_admin();
+    }
+
+    #[test]
+    #[should_panic(expected = "incompatible implementation interface")]
+    fn test_upgrade_rejects_incompatible_implementation() {
+        let env = Env::default();
+        env.mock_all_auths();
+        // Start with a valid implementation.
+        let (proxy, _admin, original_impl) = setup(&env);
+        // Attempt to upgrade to an incompatible implementation.
+        let bad_impl_id = env.register(IncompatibleImpl, ());
+        proxy.upgrade(&bad_impl_id);
+        // The implementation must remain unchanged.
+        assert_eq!(proxy.get_implementation(), original_impl);
     }
 
     #[test]

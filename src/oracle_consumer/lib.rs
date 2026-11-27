@@ -1,5 +1,6 @@
 #![no_std]
 
+use anchorpoint_utils::storage;
 use soroban_sdk::{contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, IntoVal, Vec};
 
 /// Errors that can be returned by the Oracle Consumer contract.
@@ -21,10 +22,6 @@ const DEFAULT_TWAP_WINDOW_SECONDS: u64 = 300;
 const DEFAULT_MAX_PRICE_AGE_SECONDS: u64 = 600;
 const DEFAULT_MAX_OBSERVATIONS: u32 = 24;
 const DEFAULT_MAX_STALENESS_SECONDS: u64 = 300;
-
-/// Number of ledgers to extend the TTL of persistent TWAP observation storage.
-/// ~30 days at ~5 s per ledger: 30 * 24 * 3600 / 5 = 518_400 ledgers.
-const TWAP_OBSERVATIONS_TTL: u32 = 518_400;
 
 /// Standardized data structure for price, timestamp, and asset.
 #[contracttype]
@@ -438,10 +435,9 @@ impl OracleConsumer {
         }
 
         env.storage().persistent().set(&key, &observations);
-        // Extend TTL so observations are not evicted between TWAP queries.
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, TWAP_OBSERVATIONS_TTL / 2, TWAP_OBSERVATIONS_TTL);
+        // Extend TTL so observations are not evicted between TWAP queries,
+        // using the shared workspace TTL policy.
+        storage::extend_persistent_ttl(&env, &key);
 
         env.events().publish(
             (symbol_short!("rec_price"),),

@@ -1,4 +1,5 @@
 #![no_std]
+use anchorpoint_utils::storage;
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
 
 // ============================================================================
@@ -136,8 +137,9 @@ impl IndexingContract {
         env.events()
             .publish((symbol_short!("activity"), id), now);
 
-        // Optionally renew to keep it alive for another 10,000 blocks
-        // env.storage().temporary().extend_ttl(&DataKey::LastActive(id), 10000, 10000);
+        // Renew the entry so it is not evicted between activity queries,
+        // using the shared workspace TTL policy.
+        storage::extend_temp_ttl(&env, &DataKey::LastActive(id));
     }
 
     pub fn get_last_active(env: Env, id: u32) -> u64 {
